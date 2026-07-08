@@ -14,12 +14,12 @@ import yaml
 import argparse
 from datetime import datetime
 
-# Windows 终端 UTF-8
 if sys.platform == "win32":
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 from fetcher import Fetcher
 from dedup import Dedup
+from scorer import score_articles
 from searcher import Searcher
 from rewriter import Rewriter
 from publisher import Publisher
@@ -44,6 +44,8 @@ def main():
     if args.feed_id:
         config["source"]["feeds"] = [args.feed_id]
 
+    n_candidates = config["source"]["candidate_count"]
+
     print("=" * 50)
     print(f"  [Agent] 公众号仿写智能体")
     print(f"  {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
@@ -55,7 +57,6 @@ def main():
     print("\n[1/5] 拉取最新文章...")
     fetcher = Fetcher(config)
     articles = fetcher.fetch_latest()
-
     if not articles:
         print("  无新文章，退出")
         return
@@ -63,18 +64,20 @@ def main():
     # 2. 去重
     print("\n[2/5] 去重...")
     dedup = Dedup(os.path.join(os.path.dirname(__file__), config["paths"]["dedup_db"]))
-    candidates = dedup.filter_new(articles, config["source"]["candidate_count"])
-
-    if not candidates:
+    new_articles = dedup.filter_new(articles, n_candidates * 3)
+    if not new_articles:
         print("  所有文章均已处理，退出")
         return
 
+    # 3. 质量评分 + 来源多样性
+    print("\n[3/5] 内容质量评分...")
+    candidates = score_articles(new_articles, n_candidates)
     print(f"  候选文章: {len(candidates)} 篇")
     for c in candidates:
-        print(f"    - {c.get('title', '?')[:50]}")
+        print(f"    [{c['score']:>5.0f}分] {c.get('mp_name','?')[:8]:<8} {c.get('title','?')[:45]}")
 
-    # 3. 检索 + 改写 + 发布
-    print("\n[3/5] 语义检索历史文章...")
+    # 4. 检索 + 改写 + 发布
+    print("\n[4/5] 语义检索历史文章...")
     searcher = Searcher(config)
     rewriter = Rewriter(config)
     publisher = Publisher(config)
@@ -90,18 +93,15 @@ def main():
         else:
             print("  无相关历史文章")
 
-        # 4. 改写
-        print(f"\n[4/5] AI 改写...")
+        print(f"\n[5/5] AI 改写...")
         try:
             result = rewriter.rewrite(candidate, related)
         except Exception as e:
             print(f"  [ERROR] 改写失败: {e}")
             continue
 
-        # 5. 发布
-        print(f"\n[5/5] 生成并发布...")
+        print(f"  生成并发布...")
         pub_result = publisher.publish(result)
-
         dedup.mark_processed(candidate.get("id", ""), candidate.get("title", ""))
 
     print("\n" + "=" * 50)
