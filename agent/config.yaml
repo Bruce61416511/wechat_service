@@ -1,0 +1,50 @@
+﻿# ============================================
+# 公众号仿写智能体 配置文件
+# ============================================
+
+# --- 采集源 ---
+source:
+  base_url: http://localhost:8001
+  rss_base: http://localhost:8001/rss
+  api_base: http://localhost:8001/api/v1/wx
+  # 监控的公众号，空列表=全10个
+  feeds: []
+  # 每次拉取文章数
+  fetch_limit: 20
+  # 保留候选数
+  candidate_count: 5
+
+# --- LLM 改写 ---
+llm:
+  provider: deepseek          # openai / deepseek / ollama
+  api_key: "sk-3a9c1c18554e4c5bb5f43c35cc295b3a"
+  model: deepseek-chat
+  base_url: https://api.deepseek.com/v1
+  temperature: 0.8
+  max_tokens: 4096
+
+# --- 语义检索 ---
+search:
+  # 相似度阈值 (0-1)，低于此值的忽略
+  similarity_threshold: 0.3
+  # 每篇候选最多关联的历史文章数
+  top_k: 3
+  # 索引的数据库路径
+  db_path: ../we-mp-rss-app/data/db.db
+
+# --- 发布 ---
+publish:
+  auto: false                     # true=自动发布草稿 / false=仅生成HTML
+  skill_dir: C:\Users\lin\.codex\skills\baoyu-post-to-wechat
+  # 封面图配置
+  cover:
+    width: 900
+    height: 500
+    bg_color: "#4A90E2"
+    title_font_size: 48
+
+# --- 路径 ---
+paths:
+  output_dir: ../output
+  dedup_db: ./processed.db
+  prompt_template: ./prompt.md

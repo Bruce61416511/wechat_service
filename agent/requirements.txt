@@ -1,0 +1,5 @@
+﻿requests
+pyyaml
+jieba
+scikit-learn
+Pillow
