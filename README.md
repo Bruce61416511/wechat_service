@@ -112,6 +112,6 @@ D:\AI workspace\workspace\微信公众号\
 | 事项 | 周期 | 操作 |
 |------|------|------|
 | 微信授权续期 | ~3 天 | 登录 http://localhost:8001 扫码 |
-| IP 白名单更新 | 每次重启后 | 新增 IP 到 mp.weixin.qq.com |
+| IP 白名单更新 | 每次重启后 | 新增 IP 到 mp.weixin.qq.com |  
 | 草稿检查 | 每次发布后 | mp.weixin.qq.com → 草稿箱 |
 | Git 推送 | 代码修改后 | 开 VPN 手动 push |

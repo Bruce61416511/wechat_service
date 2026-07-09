@@ -1378,8 +1378,11 @@
     // ============================================================
     // Reset
     // ============================================================
-    function resetAll() {
-      if (!confirm('确定重置当前会话？')) return;
+    async function resetAll() {
+      if (!confirm('确定重置当前会话？（将清除去重记录）')) return;
+      try {
+        await fetch('/api/reset', { method: 'POST' });
+      } catch(e) {}
       location.reload();
     }
   </script>

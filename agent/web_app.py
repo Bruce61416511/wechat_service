@@ -21,7 +21,7 @@ from typing import Optional
 if sys.platform == "win32":
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from pydantic import BaseModel
 
@@ -69,6 +69,21 @@ def reset_session():
         "rewrite_results": [],
         "publish_results": [],
     }
+
+
+@app.post("/api/reset")
+async def reset_all():
+    """重置会话并清除去重数据库"""
+    reset_session()
+    config = load_config()
+    db_path = os.path.join(os.path.dirname(__file__), config["paths"]["dedup_db"])
+    if os.path.exists(db_path):
+        import sqlite3
+        conn = sqlite3.connect(db_path)
+        conn.execute("DELETE FROM processed")
+        conn.commit()
+        conn.close()
+    return {"ok": True, "message": "已重置"}
 
 
 # ============================================================
@@ -567,7 +582,7 @@ async def get_auth_status():
 
 
 @app.get("/api/admin/auto-login")
-async def auto_login():
+async def auto_login(request: Request):
     """自动登录 we-mp-rss 并跳转到管理页面（免输入密码）"""
     import requests as req
     try:
@@ -580,7 +595,9 @@ async def auto_login():
         token = body.get("data", {}).get("access_token")
         if not token:
             return {"ok": False, "error": "登录失败，未获取到令牌"}
-        relay_url = f"http://127.0.0.1:{WE_MP_RSS_PORT}/static/relay.html?token={token}"
+        # 使用请求的主机地址，支持云端部署
+        host = request.headers.get("host", f"127.0.0.1:{WE_MP_RSS_PORT}")
+        relay_url = f"http://{host.split(':')[0]}:8001/static/relay.html?token={token}"
         return RedirectResponse(url=relay_url)
     except Exception as e:
         return {"ok": False, "error": f"自动登录失败: {str(e)}"}
@@ -627,7 +644,7 @@ async def get_feeds():
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="公众号仿写智能体 Web 管理")
-    parser.add_argument("--host", default="127.0.0.1")
+    parser.add_argument("--host", default="0.0.0.0")
     parser.add_argument("--port", type=int, default=8002)
     args = parser.parse_args()
 
