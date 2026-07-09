@@ -3,3 +3,5 @@ pyyaml
 jieba
 scikit-learn
 Pillow
+fastapi
+uvicorn

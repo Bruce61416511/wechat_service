@@ -1,0 +1,1388 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>公众号仿写智能体</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    @keyframes spin-slow { to { transform: rotate(360deg); } }
+    .spinner { animation: spin-slow 1s linear infinite; }
+    .fade-in { animation: fadeIn 0.3s ease-in; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+    #log-box { scroll-behavior: smooth; }
+    .candidate-card { transition: all 0.15s ease; }
+    .candidate-card:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
+    .candidate-card.selected { border-color: #6366f1; background-color: #eef2ff; }
+    .step-card { transition: all 0.3s ease; }
+    .step-card.active { border-left: 3px solid #6366f1; }
+    .step-card.done { border-left: 3px solid #22c55e; }
+    .step-card.error { border-left: 3px solid #ef4444; }
+    .btn-primary {
+      background: linear-gradient(135deg, #6366f1, #4f46e5);
+      transition: all 0.2s ease;
+    }
+    .btn-primary:hover:not(:disabled) {
+      background: linear-gradient(135deg, #4f46e5, #4338ca);
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(99, 102, 241, 0.4);
+    }
+    .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+    .preview-html { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    .preview-html h2 { font-size: 1.25rem; font-weight: 700; margin-bottom: 0.75rem; color: #1e293b; }
+    .preview-html h3 { font-size: 1.1rem; font-weight: 600; margin: 1rem 0 0.5rem; color: #334155; }
+    .preview-html p { margin-bottom: 0.75rem; line-height: 1.8; color: #475569; }
+    .preview-html blockquote {
+      border-left: 3px solid #6366f1; padding: 0.5rem 1rem; margin: 1rem 0;
+      background: #f8fafc; color: #64748b; font-style: italic; border-radius: 0 6px 6px 0;
+    }
+    .preview-html img { max-width: 100%; border-radius: 8px; margin: 0.75rem auto; display: block; }
+    .preview-html strong { color: #1e293b; }
+  </style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+  <!-- Header -->
+  <header class="bg-white border-b border-slate-200 sticky top-0 z-40">
+    <div class="max-w-5xl mx-auto px-6 py-3 flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <div class="w-9 h-9 bg-indigo-500 rounded-lg flex items-center justify-center">
+          <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+          </svg>
+        </div>
+        <div>
+          <h1 class="text-lg font-bold text-slate-800 leading-tight">公众号仿写智能体</h1>
+          <p class="text-xs text-slate-400" id="header-status">就绪</p>
+        </div>
+      </div>
+      <div class="flex items-center gap-2">
+        <span class="text-xs text-slate-400" id="session-info"></span>
+        <button onclick="resetAll()" class="text-xs text-slate-400 hover:text-red-500 transition-colors px-2 py-1 rounded hover:bg-red-50">
+          重置
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-5xl mx-auto px-6 py-6">
+
+    <!-- Mode Tabs -->
+    <div class="flex gap-1 mb-6 bg-white rounded-xl p-1 border border-slate-200 w-fit">
+      <button id="tab-oneclick" onclick="switchMode('oneclick')"
+        class="px-5 py-2.5 rounded-lg text-sm font-medium transition-all bg-indigo-500 text-white shadow-sm">
+        一键发布
+      </button>
+      <button id="tab-step" onclick="switchMode('step')"
+        class="px-5 py-2.5 rounded-lg text-sm font-medium transition-all text-slate-500 hover:text-slate-700 hover:bg-slate-50">
+        分步演示
+      </button>
+      <button id="tab-admin" onclick="switchMode('admin')"
+        class="px-5 py-2.5 rounded-lg text-sm font-medium transition-all text-slate-500 hover:text-slate-700 hover:bg-slate-50">
+        管理采集
+      </button>
+      <div class="w-px bg-slate-200 mx-1"></div>
+      <a href="https://mp.weixin.qq.com/" target="_blank"
+        class="px-5 py-2.5 rounded-lg text-sm font-medium transition-all text-green-600 hover:text-green-700 hover:bg-green-50 flex items-center gap-1.5">
+        微信公众号
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
+        </svg>
+      </a>
+    </div>
+
+    <!-- ==================== 一键发布模式 ==================== -->
+    <div id="mode-oneclick">
+      <div class="bg-white rounded-xl border border-slate-200 p-8">
+        <div class="text-center max-w-md mx-auto">
+          <div class="w-16 h-16 bg-indigo-50 rounded-2xl flex items-center justify-center mx-auto mb-5">
+            <svg class="w-8 h-8 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M13 10V3L4 14h7v7l9-11h-7z"/>
+            </svg>
+          </div>
+          <h2 class="text-xl font-bold text-slate-800 mb-2">一键发布</h2>
+          <p class="text-sm text-slate-500 mb-6">
+            自动完成 采集 → 评分 → 改写 → 发布 全流程<br>
+            预计耗时 3-5 分钟
+          </p>
+
+          <div class="flex items-center justify-center gap-6 mb-6 text-sm">
+            <label class="flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" id="oneclick-autopub" checked class="w-4 h-4 rounded border-slate-300 text-indigo-500 focus:ring-indigo-500">
+              <span class="text-slate-600">自动发布到草稿箱</span>
+            </label>
+          </div>
+
+          <div class="flex items-center justify-center gap-3 mb-6">
+            <select id="oneclick-feed"
+              class="text-sm border border-slate-200 rounded-lg px-3 py-2.5 bg-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none">
+              <option value="">全部公众号</option>
+            </select>
+          </div>
+
+          <button id="btn-oneclick" onclick="runOneClick()"
+            class="btn-primary text-white px-10 py-3 rounded-xl font-medium text-base">
+            开始执行
+          </button>
+        </div>
+
+        <!-- Progress -->
+        <div id="oneclick-progress" class="hidden mt-8 pt-6 border-t border-slate-100">
+          <div class="flex items-center justify-between mb-4">
+            <span class="text-sm font-medium text-slate-700">执行进度</span>
+            <span id="oneclick-phase" class="text-xs text-indigo-500 font-medium"></span>
+          </div>
+          <div class="flex items-center gap-3">
+            <div id="oc-s1" class="flex items-center gap-2">
+              <div class="w-7 h-7 rounded-full bg-slate-100 flex items-center justify-center text-xs font-bold text-slate-400" id="oc-s1-icon">1</div>
+              <span class="text-sm text-slate-400" id="oc-s1-text">采集</span>
+            </div>
+            <div class="flex-1 h-0.5 bg-slate-100 rounded" id="oc-bar-1"></div>
+            <div id="oc-s2" class="flex items-center gap-2">
+              <div class="w-7 h-7 rounded-full bg-slate-100 flex items-center justify-center text-xs font-bold text-slate-400" id="oc-s2-icon">2</div>
+              <span class="text-sm text-slate-400" id="oc-s2-text">改写</span>
+            </div>
+            <div class="flex-1 h-0.5 bg-slate-100 rounded" id="oc-bar-2"></div>
+            <div id="oc-s3" class="flex items-center gap-2">
+              <div class="w-7 h-7 rounded-full bg-slate-100 flex items-center justify-center text-xs font-bold text-slate-400" id="oc-s3-icon">3</div>
+              <span class="text-sm text-slate-400" id="oc-s3-text">发布</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Result -->
+        <div id="oneclick-result" class="hidden mt-6 fade-in"></div>
+      </div>
+
+      <!-- Log -->
+      <div id="oneclick-log-wrap" class="hidden mt-4 bg-white rounded-xl border border-slate-200 p-4">
+        <div class="flex items-center justify-between mb-2">
+          <span class="text-xs font-medium text-slate-500 uppercase tracking-wider">运行日志</span>
+          <button onclick="document.getElementById('oneclick-log-wrap').classList.add('hidden')" class="text-xs text-slate-400 hover:text-slate-600">关闭</button>
+        </div>
+        <pre id="oneclick-log" class="text-xs text-slate-500 font-mono bg-slate-50 rounded-lg p-3 max-h-48 overflow-y-auto whitespace-pre-wrap"></pre>
+      </div>
+
+      <!-- Cleanup -->
+      <div class="mt-4 bg-white rounded-xl border border-slate-200 p-5">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-3">
+            <div class="w-8 h-8 bg-amber-50 rounded-lg flex items-center justify-center">
+              <svg class="w-4 h-4 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+              </svg>
+            </div>
+            <div>
+              <h4 class="text-sm font-medium text-slate-700">清理临时文件</h4>
+              <p class="text-xs text-slate-400">删除 N 天前的输出文件（图片、HTML、封面）</p>
+            </div>
+          </div>
+          <div class="flex items-center gap-2">
+            <select id="oneclick-cleanup-days" class="text-xs border border-slate-200 rounded px-2 py-1.5 bg-white">
+              <option value="0">全部清理</option>
+              <option value="1">1 天</option>
+              <option value="3">3 天</option>
+              <option value="7" selected>7 天</option>
+              <option value="14">14 天</option>
+              <option value="30">30 天</option>
+            </select>
+            <button id="btn-cleanup-oneclick" onclick="runCleanup('oneclick')"
+              class="text-xs bg-amber-500 hover:bg-amber-600 text-white px-4 py-1.5 rounded-lg font-medium transition-colors">
+              清理
+            </button>
+          </div>
+        </div>
+        <div id="oneclick-cleanup-result" class="hidden mt-3 text-xs text-slate-500 fade-in"></div>
+      </div>
+    </div>
+
+    <!-- ==================== 分步演示模式 ==================== -->
+    <div id="mode-step" class="hidden">
+
+      <!-- Step 1: 采集 -->
+      <div id="step1-card" class="step-card bg-white rounded-xl border border-slate-200 p-6 mb-4">
+        <div class="flex items-center gap-3 mb-4">
+          <div class="w-8 h-8 bg-indigo-50 rounded-lg flex items-center justify-center">
+            <span class="text-indigo-500 font-bold text-sm">1</span>
+          </div>
+          <div class="flex-1">
+            <h3 class="font-semibold text-slate-800">采集文章</h3>
+            <p class="text-xs text-slate-400">从监控的公众号拉取最新文章，评分筛选</p>
+          </div>
+          <div id="step1-badge" class="hidden px-2.5 py-1 rounded-full text-xs font-medium"></div>
+        </div>
+
+        <div class="flex flex-wrap items-center gap-3 mb-4">
+          <select id="step-feed"
+            class="text-sm border border-slate-200 rounded-lg px-3 py-2 bg-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none">
+            <option value="">全部公众号</option>
+          </select>
+          <button id="btn-collect" onclick="runCollect()"
+            class="btn-primary text-white px-5 py-2 rounded-lg text-sm font-medium">
+            开始采集
+          </button>
+        </div>
+
+        <div id="step1-info" class="hidden text-sm text-slate-500 mb-3 fade-in"></div>
+        <div id="step1-candidates" class="hidden fade-in"></div>
+      </div>
+
+      <!-- Step 2: 改写 -->
+      <div id="step2-card" class="step-card bg-white rounded-xl border border-slate-200 p-6 mb-4 opacity-50">
+        <div class="flex items-center gap-3 mb-4">
+          <div class="w-8 h-8 bg-indigo-50 rounded-lg flex items-center justify-center">
+            <span class="text-indigo-500 font-bold text-sm">2</span>
+          </div>
+          <div class="flex-1">
+            <h3 class="font-semibold text-slate-800">AI 改写</h3>
+            <p class="text-xs text-slate-400">检索历史文章，LLM 仿写为原创内容</p>
+          </div>
+          <div id="step2-badge" class="hidden px-2.5 py-1 rounded-full text-xs font-medium"></div>
+        </div>
+
+        <div class="flex items-center gap-3 mb-4">
+          <button id="btn-rewrite" onclick="runRewrite()" disabled
+            class="btn-primary text-white px-5 py-2 rounded-lg text-sm font-medium">
+            开始改写
+          </button>
+          <span id="rewrite-hint" class="text-xs text-slate-400">请先完成采集</span>
+        </div>
+
+        <div id="step2-results" class="hidden fade-in"></div>
+      </div>
+
+      <!-- Step 3: 发布 -->
+      <div id="step3-card" class="step-card bg-white rounded-xl border border-slate-200 p-6 mb-4 opacity-50">
+        <div class="flex items-center gap-3 mb-4">
+          <div class="w-8 h-8 bg-indigo-50 rounded-lg flex items-center justify-center">
+            <span class="text-indigo-500 font-bold text-sm">3</span>
+          </div>
+          <div class="flex-1">
+            <h3 class="font-semibold text-slate-800">发布</h3>
+            <p class="text-xs text-slate-400">处理图片、生成封面，发布到草稿箱</p>
+          </div>
+          <div id="step3-badge" class="hidden px-2.5 py-1 rounded-full text-xs font-medium"></div>
+        </div>
+
+        <div class="flex items-center gap-3 mb-4">
+          <label class="flex items-center gap-2 cursor-pointer">
+            <input type="checkbox" id="step-autopub" class="w-4 h-4 rounded border-slate-300 text-indigo-500 focus:ring-indigo-500">
+            <span class="text-sm text-slate-600">自动发布到草稿箱</span>
+          </label>
+          <button id="btn-publish" onclick="runPublish()" disabled
+            class="btn-primary text-white px-5 py-2 rounded-lg text-sm font-medium">
+            发布
+          </button>
+          <span id="publish-hint" class="text-xs text-slate-400">请先完成改写</span>
+        </div>
+
+        <div id="step3-results" class="hidden fade-in"></div>
+      </div>
+
+      <!-- Step 4: 清理 -->
+      <div id="step4-card" class="step-card bg-white rounded-xl border border-slate-200 p-6 mb-4">
+        <div class="flex items-center gap-3 mb-4">
+          <div class="w-8 h-8 bg-amber-50 rounded-lg flex items-center justify-center">
+            <span class="text-amber-500 font-bold text-sm">4</span>
+          </div>
+          <div class="flex-1">
+            <h3 class="font-semibold text-slate-800">清理临时文件</h3>
+            <p class="text-xs text-slate-400">删除 N 天前的输出文件，释放磁盘空间</p>
+          </div>
+          <div id="step4-badge" class="hidden px-2.5 py-1 rounded-full text-xs font-medium"></div>
+        </div>
+
+        <div class="flex items-center gap-3 mb-4">
+          <select id="step-cleanup-days" class="text-sm border border-slate-200 rounded-lg px-3 py-2 bg-white">
+            <option value="0">全部清理</option>
+            <option value="1">1 天</option>
+            <option value="3">3 天</option>
+            <option value="7" selected>7 天</option>
+            <option value="14">14 天</option>
+            <option value="30">30 天</option>
+          </select>
+          <button id="btn-cleanup-step" onclick="runCleanup('step')"
+            class="bg-amber-500 hover:bg-amber-600 text-white px-5 py-2 rounded-lg text-sm font-medium transition-colors">
+            开始清理
+          </button>
+        </div>
+
+        <div id="step4-results" class="hidden fade-in"></div>
+      </div>
+    </div>
+
+    <!-- ==================== 管理采集模式 ==================== -->
+    <div id="mode-admin" class="hidden">
+
+      <!-- 服务状态 -->
+      <div class="bg-white rounded-xl border border-slate-200 p-6 mb-4">
+        <div class="flex items-center gap-3 mb-4">
+          <div class="w-8 h-8 bg-green-50 rounded-lg flex items-center justify-center">
+            <svg class="w-4 h-4 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2"/>
+            </svg>
+          </div>
+          <div class="flex-1">
+            <h3 class="font-semibold text-slate-800">采集服务状态</h3>
+            <p class="text-xs text-slate-400">we-mp-rss 运行在端口 8001</p>
+          </div>
+          <div id="service-status-badge" class="px-2.5 py-1 rounded-full text-xs font-medium bg-slate-100 text-slate-500">
+            检测中...
+          </div>
+        </div>
+
+        <div class="flex items-center gap-3">
+          <button id="btn-service-start" onclick="manageService('start')"
+            class="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors">
+            启动服务
+          </button>
+          <button id="btn-service-stop" onclick="manageService('stop')"
+            class="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors">
+            停止服务
+          </button>
+          <button onclick="checkServiceStatus()"
+            class="text-slate-500 hover:text-slate-700 px-4 py-2 rounded-lg text-sm font-medium transition-colors border border-slate-200">
+            刷新状态
+          </button>
+          <a href="javascript:void(0)" onclick="autoLoginManagement()"
+            class="ml-auto text-xs text-indigo-500 hover:text-indigo-700 font-medium">
+            打开管理界面 →
+          </a>
+        </div>
+        <div id="service-status-msg" class="hidden mt-3 text-xs fade-in"></div>
+      </div>
+
+      <!-- 采集配置 -->
+      <div class="bg-white rounded-xl border border-slate-200 p-6 mb-4">
+        <div class="flex items-center gap-3 mb-4">
+          <div class="w-8 h-8 bg-blue-50 rounded-lg flex items-center justify-center">
+            <svg class="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+            </svg>
+          </div>
+          <div class="flex-1">
+            <h3 class="font-semibold text-slate-800">采集配置</h3>
+            <p class="text-xs text-slate-400">修改后需重启服务生效</p>
+          </div>
+          <button onclick="loadConfig()" class="text-xs text-slate-400 hover:text-slate-600">刷新</button>
+        </div>
+
+        <div id="config-list" class="space-y-3">
+          <div class="text-sm text-slate-400 text-center py-4">加载中...</div>
+        </div>
+        <div id="config-msg" class="hidden mt-3 text-xs fade-in"></div>
+      </div>
+
+      <!-- 公众号管理 -->
+      <div class="bg-white rounded-xl border border-slate-200 p-6 mb-4">
+        <div class="flex items-center gap-3 mb-4">
+          <div class="w-8 h-8 bg-purple-50 rounded-lg flex items-center justify-center">
+            <svg class="w-4 h-4 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/>
+            </svg>
+          </div>
+          <div class="flex-1">
+            <h3 class="font-semibold text-slate-800">公众号管理</h3>
+            <p class="text-xs text-slate-400">查看已订阅公众号，删除不再需要的订阅</p>
+          </div>
+          <button onclick="loadFeedsDetail()" class="text-xs text-slate-400 hover:text-slate-600">刷新</button>
+          <a href="javascript:void(0)" onclick="autoLoginManagement()"
+            class="text-xs text-indigo-500 hover:text-indigo-700 font-medium">
+            新增公众号 →
+          </a>
+        </div>
+
+        <div id="feeds-list" class="space-y-2">
+          <div class="text-sm text-slate-400 text-center py-4">加载中...</div>
+        </div>
+        <div id="feeds-msg" class="hidden mt-3 text-xs fade-in"></div>
+      </div>
+
+      <!-- 授权状态 -->
+      <div class="bg-white rounded-xl border border-slate-200 p-6 mb-4">
+        <div class="flex items-center gap-3 mb-4">
+          <div class="w-8 h-8 bg-amber-50 rounded-lg flex items-center justify-center">
+            <svg class="w-4 h-4 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
+            </svg>
+          </div>
+          <div class="flex-1">
+            <h3 class="font-semibold text-slate-800">微信授权状态</h3>
+            <p class="text-xs text-slate-400">授权有效期约 3 天，过期需重新扫码</p>
+          </div>
+          <button onclick="loadAuthStatus()" class="text-xs text-slate-400 hover:text-slate-600">刷新</button>
+        </div>
+
+        <div id="auth-status-content" class="space-y-3">
+          <div class="text-sm text-slate-400 text-center py-4">加载中...</div>
+        </div>
+        <div id="auth-msg" class="hidden mt-3 text-xs fade-in"></div>
+      </div>
+
+    </div>
+
+  </main>
+
+  <!-- Preview Modal -->
+  <div id="preview-modal" class="fixed inset-0 bg-black/50 z-50 hidden flex items-center justify-center p-4"
+    onclick="if(event.target===this)closePreview()">
+    <div class="bg-white rounded-2xl w-full max-w-2xl max-h-[85vh] flex flex-col shadow-2xl">
+      <div class="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+        <h3 id="preview-title" class="font-semibold text-slate-800 truncate pr-4"></h3>
+        <button onclick="closePreview()" class="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100 transition-colors">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+          </svg>
+        </button>
+      </div>
+      <div id="preview-body" class="px-6 py-5 overflow-y-auto preview-html flex-1"></div>
+    </div>
+  </div>
+
+  <script>
+    // ============================================================
+    // State
+    // ============================================================
+    let currentMode = 'oneclick';
+    let candidates = [];
+    let rewriteData = [];
+
+    // ============================================================
+    // Init
+    // ============================================================
+    document.addEventListener('DOMContentLoaded', () => {
+      loadFeeds();
+      loadStatus();
+    });
+
+    async function loadFeeds() {
+      try {
+        const res = await fetch('/api/feeds');
+        const data = await res.json();
+        if (!data.ok) return;
+        const opts = data.feeds.map(f =>
+          `<option value="${f.id}">${f.name}</option>`
+        ).join('');
+        document.getElementById('step-feed').innerHTML =
+          '<option value="">全部公众号</option>' + opts;
+        document.getElementById('oneclick-feed').innerHTML =
+          '<option value="">全部公众号</option>' + opts;
+      } catch (e) {
+        console.error('load feeds failed:', e);
+      }
+    }
+
+    async function loadStatus() {
+      try {
+        const res = await fetch('/api/status');
+        const data = await res.json();
+        if (data.has_candidates) {
+          document.getElementById('header-status').textContent = '有未完成的会话';
+          document.getElementById('session-info').textContent =
+            `${data.candidate_count} 篇候选 · ${data.rewrite_count} 篇已改写`;
+        }
+      } catch (e) {}
+    }
+
+    // ============================================================
+    // Mode switch
+    // ============================================================
+    function switchMode(mode) {
+      currentMode = mode;
+      const tabs = { oneclick: 'tab-oneclick', step: 'tab-step', admin: 'tab-admin' };
+      const panels = { oneclick: 'mode-oneclick', step: 'mode-step', admin: 'mode-admin' };
+      const activeCls = 'px-5 py-2.5 rounded-lg text-sm font-medium transition-all bg-indigo-500 text-white shadow-sm';
+      const inactiveCls = 'px-5 py-2.5 rounded-lg text-sm font-medium transition-all text-slate-500 hover:text-slate-700 hover:bg-slate-50';
+
+      for (const [key, tabId] of Object.entries(tabs)) {
+        document.getElementById(tabId).className = key === mode ? activeCls : inactiveCls;
+      }
+      for (const [key, panelId] of Object.entries(panels)) {
+        document.getElementById(panelId).classList.toggle('hidden', key !== mode);
+      }
+
+      // 切到管理页时自动加载数据
+      if (mode === 'admin') {
+        checkServiceStatus();
+        loadConfig();
+        loadFeedsDetail();
+        loadAuthStatus();
+      }
+    }
+
+    // ============================================================
+    // Helpers
+    // ============================================================
+    function setBtnLoading(btnId, loading, loadingText) {
+      const btn = document.getElementById(btnId);
+      if (loading) {
+        btn._origHTML = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = `<svg class="w-4 h-4 spinner inline-block mr-1.5 -ml-0.5" fill="none" viewBox="0 0 24 24">
+          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+        </svg>${loadingText || '处理中...'}`;
+      } else {
+        btn.disabled = false;
+        btn.innerHTML = btn._origHTML || btn.innerHTML;
+      }
+    }
+
+    function setStepState(stepNum, state) {
+      const card = document.getElementById(`step${stepNum}-card`);
+      const badge = document.getElementById(`step${stepNum}-badge`);
+      card.classList.remove('active', 'done', 'error');
+      card.classList.add(state);
+
+      if (state === 'active') {
+        badge.className = 'px-2.5 py-1 rounded-full text-xs font-medium bg-indigo-50 text-indigo-600';
+        badge.textContent = '进行中';
+        badge.classList.remove('hidden');
+      } else if (state === 'done') {
+        badge.className = 'px-2.5 py-1 rounded-full text-xs font-medium bg-green-50 text-green-600';
+        badge.textContent = '完成';
+        badge.classList.remove('hidden');
+      } else if (state === 'error') {
+        badge.className = 'px-2.5 py-1 rounded-full text-xs font-medium bg-red-50 text-red-600';
+        badge.textContent = '失败';
+        badge.classList.remove('hidden');
+      }
+    }
+
+    function activateStep(stepNum) {
+      const card = document.getElementById(`step${stepNum}-card`);
+      card.classList.remove('opacity-50');
+      if (stepNum === 2) {
+        document.getElementById('btn-rewrite').disabled = false;
+        document.getElementById('rewrite-hint').classList.add('hidden');
+      }
+      if (stepNum === 3) {
+        document.getElementById('btn-publish').disabled = false;
+        document.getElementById('publish-hint').classList.add('hidden');
+      }
+    }
+
+    // One-click progress helpers
+    function setOcStep(step, state) {
+      const icon = document.getElementById(`oc-s${step}-icon`);
+      const text = document.getElementById(`oc-s${step}-text`);
+      const labels = { 1: '采集', 2: '改写', 3: '发布' };
+
+      if (state === 'running') {
+        icon.className = 'w-7 h-7 rounded-full bg-indigo-500 flex items-center justify-center text-xs font-bold text-white';
+        icon.innerHTML = '<svg class="w-3.5 h-3.5 spinner" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>';
+        text.className = 'text-sm text-indigo-600 font-medium';
+        document.getElementById('oneclick-phase').textContent = labels[step] + '中...';
+      } else if (state === 'done') {
+        icon.className = 'w-7 h-7 rounded-full bg-green-500 flex items-center justify-center text-xs font-bold text-white';
+        icon.innerHTML = '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>';
+        text.className = 'text-sm text-green-600 font-medium';
+        if (step < 3) {
+          document.getElementById(`oc-bar-${step}`).className = 'flex-1 h-0.5 bg-green-400 rounded transition-colors';
+        }
+      } else if (state === 'error') {
+        icon.className = 'w-7 h-7 rounded-full bg-red-500 flex items-center justify-center text-xs font-bold text-white';
+        icon.innerHTML = '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>';
+        text.className = 'text-sm text-red-600 font-medium';
+      }
+    }
+
+    function resetOcSteps() {
+      for (let i = 1; i <= 3; i++) {
+        const icon = document.getElementById(`oc-s${i}-icon`);
+        const text = document.getElementById(`oc-s${i}-text`);
+        icon.className = 'w-7 h-7 rounded-full bg-slate-100 flex items-center justify-center text-xs font-bold text-slate-400';
+        icon.textContent = i;
+        text.className = 'text-sm text-slate-400';
+        if (i < 3) {
+          document.getElementById(`oc-bar-${i}`).className = 'flex-1 h-0.5 bg-slate-100 rounded transition-colors';
+        }
+      }
+      document.getElementById('oneclick-phase').textContent = '';
+    }
+
+    // ============================================================
+    // One-click mode
+    // ============================================================
+    async function runOneClick() {
+      const btn = document.getElementById('btn-oneclick');
+      const progress = document.getElementById('oneclick-progress');
+      const resultDiv = document.getElementById('oneclick-result');
+      const logWrap = document.getElementById('oneclick-log-wrap');
+      const logBox = document.getElementById('oneclick-log');
+
+      const autoPublish = document.getElementById('oneclick-autopub').checked;
+      const feedId = document.getElementById('oneclick-feed').value;
+
+      btn.disabled = true;
+      btn.textContent = '执行中...';
+      progress.classList.remove('hidden');
+      resultDiv.classList.add('hidden');
+      logWrap.classList.remove('hidden');
+      logBox.textContent = '';
+      resetOcSteps();
+
+      const addLog = (msg) => {
+        logBox.textContent += msg + '\n';
+        logBox.scrollTop = logBox.scrollHeight;
+      };
+
+      const t0 = Date.now();
+      let collectData = null, rewriteResults = [], publishResults = [];
+
+      try {
+        // Step 1: Collect
+        setOcStep(1, 'running');
+        addLog(`[${new Date().toLocaleTimeString()}] 开始采集...`);
+
+        const collectRes = await fetch('/api/step/collect', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ feed_id: feedId || null, auto_publish: autoPublish }),
+        });
+        collectData = await collectRes.json();
+
+        if (!collectData.ok) throw new Error(collectData.error || '采集失败');
+
+        setOcStep(1, 'done');
+        addLog(`[${new Date().toLocaleTimeString()}] 采集完成: ${collectData.total_fetched} 篇 → 精选 ${collectData.candidates.length} 篇`);
+        collectData.candidates.forEach(c => {
+          addLog(`  [${c.score}分] ${c.mp_name} - ${c.title}`);
+        });
+
+        // Step 2: Rewrite
+        setOcStep(2, 'running');
+        addLog(`\n[${new Date().toLocaleTimeString()}] 开始 AI 改写 (每篇约 30-60 秒)...`);
+
+        const rewriteRes = await fetch('/api/step/rewrite', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({}),
+        });
+        const rData = await rewriteRes.json();
+
+        if (!rData.ok) throw new Error(rData.error || '改写失败');
+        rewriteResults = rData.results;
+
+        setOcStep(2, 'done');
+        const okCount = rewriteResults.filter(r => r.status === 'success').length;
+        addLog(`[${new Date().toLocaleTimeString()}] 改写完成: ${okCount}/${rewriteResults.length} 篇成功`);
+
+        // Step 3: Publish
+        setOcStep(3, 'running');
+        addLog(`\n[${new Date().toLocaleTimeString()}] 开始发布...`);
+
+        const publishRes = await fetch('/api/step/publish', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ auto_publish: autoPublish }),
+        });
+        const pData = await publishRes.json();
+
+        if (!pData.ok) throw new Error(pData.error || '发布失败');
+        publishResults = pData.results;
+
+        setOcStep(3, 'done');
+        addLog(`[${new Date().toLocaleTimeString()}] 发布完成!`);
+        document.getElementById('oneclick-phase').textContent = '全部完成';
+
+        const elapsed = ((Date.now() - t0) / 1000).toFixed(0);
+
+        // Show result summary
+        const pubOk = publishResults.filter(r => r.status === 'published').length;
+        const pubFail = publishResults.filter(r => r.status === 'failed').length;
+        const pubDraft = publishResults.filter(r => r.status === 'draft').length;
+
+        resultDiv.innerHTML = `
+          <div class="bg-green-50 border border-green-200 rounded-xl p-5">
+            <div class="flex items-center gap-2 mb-3">
+              <svg class="w-5 h-5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+              </svg>
+              <span class="font-semibold text-green-800">执行完成</span>
+              <span class="text-xs text-green-600 ml-auto">耗时 ${elapsed}s</span>
+            </div>
+            <div class="flex gap-6 text-sm">
+              <div><span class="text-green-700 font-medium">${collectData.candidates.length}</span> <span class="text-green-600">篇采集</span></div>
+              <div><span class="text-green-700 font-medium">${okCount}</span> <span class="text-green-600">篇改写成功</span></div>
+              <div><span class="text-green-700 font-medium">${pubOk || pubDraft}</span> <span class="text-green-600">篇${autoPublish ? '已发草稿箱' : '已生成 HTML'}</span></div>
+            </div>
+          </div>
+        `;
+        resultDiv.classList.remove('hidden');
+
+      } catch (err) {
+        addLog(`\n[ERROR] ${err.message}`);
+        resultDiv.innerHTML = `
+          <div class="bg-red-50 border border-red-200 rounded-xl p-4">
+            <span class="text-red-700 text-sm">${err.message}</span>
+          </div>
+        `;
+        resultDiv.classList.remove('hidden');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '重新执行';
+        document.getElementById('header-status').textContent = '上次执行: ' + new Date().toLocaleTimeString();
+      }
+    }
+
+    // ============================================================
+    // Step 1: Collect
+    // ============================================================
+    async function runCollect() {
+      const feedId = document.getElementById('step-feed').value;
+      const infoDiv = document.getElementById('step1-info');
+      const candDiv = document.getElementById('step1-candidates');
+
+      setBtnLoading('btn-collect', true, '采集中...');
+      setStepState(1, 'active');
+      infoDiv.classList.add('hidden');
+      candDiv.classList.add('hidden');
+
+      try {
+        const res = await fetch('/api/step/collect', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ feed_id: feedId || null }),
+        });
+        const data = await res.json();
+
+        if (!data.ok) throw new Error(data.error);
+
+        candidates = data.candidates;
+        setStepState(1, 'done');
+
+        infoDiv.innerHTML = `共拉取 <b>${data.total_fetched}</b> 篇，去重后 <b>${data.new_count}</b> 篇，精选 <b class="text-indigo-600">${data.candidates.length}</b> 篇候选`;
+        infoDiv.classList.remove('hidden');
+
+        candDiv.innerHTML = `
+          <div class="space-y-2">
+            ${data.candidates.map((c, i) => `
+              <label class="candidate-card flex items-start gap-3 p-3 border border-slate-200 rounded-lg cursor-pointer selected">
+                <input type="checkbox" value="${c.id}" checked class="mt-1 w-4 h-4 rounded border-slate-300 text-indigo-500 focus:ring-indigo-500">
+                <div class="flex-1 min-w-0">
+                  <div class="font-medium text-sm text-slate-800 truncate">${c.title}</div>
+                  <div class="flex items-center gap-3 mt-1 text-xs text-slate-400">
+                    <span class="text-indigo-500 font-medium">${c.score} 分</span>
+                    <span>${c.mp_name}</span>
+                    <span>${c.content_len} 字</span>
+                    ${c.url ? `<a href="${c.url}" target="_blank" onclick="event.stopPropagation()" class="text-indigo-400 hover:text-indigo-600 font-medium">查看原文 →</a>` : ''}
+                  </div>
+                </div>
+              </label>
+            `).join('')}
+          </div>
+          <div class="flex items-center gap-3 mt-3">
+            <button onclick="selectAll(true)" class="text-xs text-indigo-500 hover:text-indigo-700">全选</button>
+            <button onclick="selectAll(false)" class="text-xs text-slate-400 hover:text-slate-600">取消全选</button>
+            <span class="text-xs text-slate-400" id="select-count">${data.candidates.length} 篇已选</span>
+          </div>
+        `;
+        candDiv.classList.remove('hidden');
+
+        // Activate step 2
+        activateStep(2);
+
+        // Bind checkbox change
+        candDiv.querySelectorAll('input[type=checkbox]').forEach(cb => {
+          cb.addEventListener('change', () => {
+            const checked = candDiv.querySelectorAll('input[type=checkbox]:checked').length;
+            document.getElementById('select-count').textContent = `${checked} 篇已选`;
+            cb.closest('.candidate-card').classList.toggle('selected', cb.checked);
+          });
+        });
+
+      } catch (err) {
+        setStepState(1, 'error');
+        infoDiv.innerHTML = `<span class="text-red-500 text-sm">${err.message}</span>`;
+        infoDiv.classList.remove('hidden');
+      } finally {
+        setBtnLoading('btn-collect', false);
+      }
+    }
+
+    function selectAll(checked) {
+      document.querySelectorAll('#step1-candidates input[type=checkbox]').forEach(cb => {
+        cb.checked = checked;
+        cb.closest('.candidate-card').classList.toggle('selected', checked);
+      });
+      const count = checked ? candidates.length : 0;
+      const el = document.getElementById('select-count');
+      if (el) el.textContent = `${count} 篇已选`;
+    }
+
+    // ============================================================
+    // Step 2: Rewrite
+    // ============================================================
+    async function runRewrite() {
+      const checkedIds = Array.from(
+        document.querySelectorAll('#step1-candidates input[type=checkbox]:checked')
+      ).map(cb => cb.value);
+
+      if (!checkedIds.length) {
+        alert('请至少选择一篇文章');
+        return;
+      }
+
+      const resultsDiv = document.getElementById('step2-results');
+      setBtnLoading('btn-rewrite', true, '改写中...');
+      setStepState(2, 'active');
+      resultsDiv.classList.add('hidden');
+
+      try {
+        const res = await fetch('/api/step/rewrite', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ selected_ids: checkedIds }),
+        });
+        const data = await res.json();
+
+        if (!data.ok) throw new Error(data.error);
+
+        rewriteData = data.results;
+        setStepState(2, 'done');
+
+        const okResults = data.results.filter(r => r.status === 'success');
+        const failResults = data.results.filter(r => r.status === 'failed');
+
+        let html = '<div class="space-y-3">';
+
+        okResults.forEach((r, i) => {
+          html += `
+            <div class="border border-slate-200 rounded-lg p-4">
+              <div class="flex items-center justify-between mb-2">
+                <div class="flex items-center gap-2">
+                  <svg class="w-4 h-4 text-green-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                  </svg>
+                  <span class="font-medium text-sm text-slate-800 truncate max-w-xs">${r.title}</span>
+                </div>
+                <div class="flex items-center gap-2 shrink-0">
+                  <span class="text-xs text-slate-400">${r.related_count} 篇关联</span>
+                  <button onclick="showPreview(${i}, 'success')"
+                    class="text-xs text-indigo-500 hover:text-indigo-700 font-medium px-2 py-1 rounded hover:bg-indigo-50 transition-colors">
+                    预览
+                  </button>
+                </div>
+              </div>
+            </div>
+          `;
+        });
+
+        failResults.forEach(r => {
+          html += `
+            <div class="border border-red-100 rounded-lg p-4 bg-red-50/50">
+              <div class="flex items-center gap-2">
+                <svg class="w-4 h-4 text-red-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                </svg>
+                <span class="text-sm text-slate-600 truncate">${r.title}</span>
+                <span class="text-xs text-red-500 ml-auto shrink-0">${r.error}</span>
+              </div>
+            </div>
+          `;
+        });
+
+        html += '</div>';
+        resultsDiv.innerHTML = html;
+        resultsDiv.classList.remove('hidden');
+
+        activateStep(3);
+
+      } catch (err) {
+        setStepState(2, 'error');
+        resultsDiv.innerHTML = `<div class="text-sm text-red-500 p-3 bg-red-50 rounded-lg">${err.message}</div>`;
+        resultsDiv.classList.remove('hidden');
+      } finally {
+        setBtnLoading('btn-rewrite', false);
+      }
+    }
+
+    // ============================================================
+    // Step 3: Publish
+    // ============================================================
+    async function runPublish() {
+      const autoPublish = document.getElementById('step-autopub').checked;
+      const resultsDiv = document.getElementById('step3-results');
+
+      setBtnLoading('btn-publish', true, '发布中...');
+      setStepState(3, 'active');
+      resultsDiv.classList.add('hidden');
+
+      try {
+        const res = await fetch('/api/step/publish', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ auto_publish: autoPublish }),
+        });
+        const data = await res.json();
+
+        if (!data.ok) throw new Error(data.error);
+
+        setStepState(3, 'done');
+
+        let html = '<div class="space-y-2">';
+        data.results.forEach(r => {
+          const isOk = r.status === 'published' || r.status === 'draft';
+          const icon = isOk
+            ? '<svg class="w-4 h-4 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>'
+            : '<svg class="w-4 h-4 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>';
+          const statusText = r.status === 'published' ? '已发草稿箱'
+            : r.status === 'draft' ? '已生成 HTML'
+            : '失败: ' + (r.error || '');
+
+          html += `
+            <div class="flex items-center gap-3 p-3 border border-slate-200 rounded-lg">
+              ${icon}
+              <span class="text-sm text-slate-800 flex-1 truncate">${r.title}</span>
+              <span class="text-xs ${isOk ? 'text-green-600' : 'text-red-500'} shrink-0">${statusText}</span>
+            </div>
+          `;
+        });
+        html += '</div>';
+
+        resultsDiv.innerHTML = html;
+        resultsDiv.classList.remove('hidden');
+
+      } catch (err) {
+        setStepState(3, 'error');
+        resultsDiv.innerHTML = `<div class="text-sm text-red-500 p-3 bg-red-50 rounded-lg">${err.message}</div>`;
+        resultsDiv.classList.remove('hidden');
+      } finally {
+        setBtnLoading('btn-publish', false);
+      }
+    }
+
+    // ============================================================
+    // Preview
+    // ============================================================
+    function showPreview(index, source) {
+      const data = source === 'success' ? rewriteData[index] : null;
+      if (!data || !data.html_full) return;
+
+      document.getElementById('preview-title').textContent = data.title;
+      document.getElementById('preview-body').innerHTML = data.html_full;
+      document.getElementById('preview-modal').classList.remove('hidden');
+      document.body.style.overflow = 'hidden';
+    }
+
+    function closePreview() {
+      document.getElementById('preview-modal').classList.add('hidden');
+      document.body.style.overflow = '';
+    }
+
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape') closePreview();
+    });
+
+    // ============================================================
+    // Cleanup
+    // ============================================================
+    async function runCleanup(mode) {
+      const btnId = mode === 'oneclick' ? 'btn-cleanup-oneclick' : 'btn-cleanup-step';
+      const daysId = mode === 'oneclick' ? 'oneclick-cleanup-days' : 'step-cleanup-days';
+      const resultId = mode === 'oneclick' ? 'oneclick-cleanup-result' : 'step4-results';
+
+      const btn = document.getElementById(btnId);
+      const days = parseInt(document.getElementById(daysId).value);
+      const resultDiv = document.getElementById(resultId);
+
+      btn.disabled = true;
+      btn._origText = btn.textContent;
+      btn.textContent = '清理中...';
+      resultDiv.classList.add('hidden');
+
+      if (mode === 'step') {
+        setStepState(4, 'active');
+      }
+
+      try {
+        const res = await fetch('/api/cleanup', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ days }),
+        });
+        const data = await res.json();
+
+        if (!data.ok) throw new Error(data.error);
+
+        if (mode === 'oneclick') {
+          resultDiv.innerHTML = `
+            <div class="flex items-center gap-2 text-green-600">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+              </svg>
+              <span>已清理 <b>${data.deleted_count}</b> 个文件/目录（保留最近 ${data.retention_days} 天）</span>
+            </div>
+            ${data.deleted.length > 0 ? `<div class="mt-1 text-slate-400">删除: ${data.deleted.map(d => d.name).join(', ')}</div>` : ''}
+          `;
+        } else {
+          setStepState(4, 'done');
+          resultDiv.innerHTML = `
+            <div class="bg-green-50 border border-green-200 rounded-lg p-4">
+              <div class="flex items-center gap-2 mb-2">
+                <svg class="w-4 h-4 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                </svg>
+                <span class="text-sm font-medium text-green-800">清理完成</span>
+              </div>
+              <div class="text-xs text-green-700">
+                删除了 <b>${data.deleted_count}</b> 个文件/目录（保留最近 ${data.retention_days} 天）
+              </div>
+              ${data.deleted.length > 0 ? `
+                <div class="mt-2 text-xs text-slate-500">
+                  <div class="font-medium mb-1">已删除:</div>
+                  <ul class="list-disc list-inside space-y-0.5">
+                    ${data.deleted.map(d => `<li>${d.name} (${d.type === 'dir' ? '目录' : '文件'})</li>`).join('')}
+                  </ul>
+                </div>
+              ` : ''}
+              ${data.kept.length > 0 ? `
+                <div class="mt-2 text-xs text-slate-400">
+                  保留: ${data.kept.join(', ')}
+                </div>
+              ` : ''}
+            </div>
+          `;
+        }
+        resultDiv.classList.remove('hidden');
+
+      } catch (err) {
+        if (mode === 'step') {
+          setStepState(4, 'error');
+        }
+        resultDiv.innerHTML = `<div class="text-sm text-red-500 p-3 bg-red-50 rounded-lg">${err.message}</div>`;
+        resultDiv.classList.remove('hidden');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = btn._origText || '清理';
+      }
+    }
+
+    // ============================================================
+    // Admin: 免登录打开管理界面
+    // ============================================================
+    function autoLoginManagement() {
+      window.open('/api/admin/auto-login', '_blank');
+    }
+
+    // ============================================================
+    // Admin: 采集服务管理
+    // ============================================================
+    async function checkServiceStatus() {
+      const badge = document.getElementById('service-status-badge');
+      const msgDiv = document.getElementById('service-status-msg');
+      badge.textContent = '检测中...';
+      badge.className = 'px-2.5 py-1 rounded-full text-xs font-medium bg-slate-100 text-slate-500';
+
+      try {
+        const res = await fetch('/api/admin/service', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'status' }),
+        });
+        const data = await res.json();
+        if (data.running) {
+          badge.textContent = '运行中';
+          badge.className = 'px-2.5 py-1 rounded-full text-xs font-medium bg-green-50 text-green-600';
+          if (data.pid) {
+            msgDiv.innerHTML = `<span class="text-green-600">服务正常运行，PID: ${data.pid}</span>`;
+            msgDiv.className = 'mt-3 text-xs fade-in';
+            msgDiv.classList.remove('hidden');
+          }
+        } else {
+          badge.textContent = '已停止';
+          badge.className = 'px-2.5 py-1 rounded-full text-xs font-medium bg-red-50 text-red-600';
+          msgDiv.innerHTML = `<span class="text-slate-500">服务未运行，点击"启动服务"按钮启动</span>`;
+          msgDiv.className = 'mt-3 text-xs fade-in';
+          msgDiv.classList.remove('hidden');
+        }
+      } catch (e) {
+        badge.textContent = '检测失败';
+        badge.className = 'px-2.5 py-1 rounded-full text-xs font-medium bg-red-50 text-red-600';
+      }
+    }
+
+    async function manageService(action) {
+      const btnId = action === 'start' ? 'btn-service-start' : 'btn-service-stop';
+      const label = action === 'start' ? '启动中...' : '停止中...';
+      setBtnLoading(btnId, true, label);
+
+      try {
+        const res = await fetch('/api/admin/service', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action }),
+        });
+        const data = await res.json();
+        const msgDiv = document.getElementById('service-status-msg');
+        msgDiv.classList.remove('hidden');
+
+        if (data.ok) {
+          msgDiv.innerHTML = `<span class="text-green-600">${data.message}</span>`;
+        } else {
+          msgDiv.innerHTML = `<span class="text-red-500">${data.error}</span>`;
+        }
+        // 刷新状态
+        await checkServiceStatus();
+      } catch (e) {
+        console.error('manage service failed:', e);
+      } finally {
+        setBtnLoading(btnId, false);
+      }
+    }
+
+    // ============================================================
+    // Admin: 采集配置
+    // ============================================================
+    async function loadConfig() {
+      const container = document.getElementById('config-list');
+      container.innerHTML = '<div class="text-sm text-slate-400 text-center py-4">加载中...</div>';
+
+      try {
+        const res = await fetch('/api/admin/config');
+        const data = await res.json();
+        if (!data.ok) throw new Error(data.error);
+
+        const config = data.config;
+        // 展示有用的配置项
+        const displayItems = [
+          { key: 'port', label: '服务端口', desc: '采集服务监听端口' },
+          { key: 'token_expire_minutes', label: '授权有效期', desc: '微信登录授权有效时长（分钟）' },
+          { key: 'interval', label: '采集间隔', desc: '每篇采集间隔（秒）' },
+          { key: 'max_page', label: '最大页数', desc: '首次添加公众号采集页数' },
+        ];
+
+        // 嵌套配置
+        const nestedItems = [
+          { key: 'server.enable_job', label: '定时任务', desc: '是否启用定时采集' },
+          { key: 'server.threads', label: '线程数', desc: '最大线程数' },
+          { key: 'gather.content', label: '采集正文', desc: '是否采集文章正文内容' },
+          { key: 'gather.model', label: '采集模式', desc: 'web/api/app' },
+          { key: 'gather.content_auto_check', label: '自动检查', desc: '自动检查未采集文章' },
+        ];
+
+        let html = '<div class="grid grid-cols-1 sm:grid-cols-2 gap-3">';
+
+        // 顶层配置
+        displayItems.forEach(item => {
+          const val = config[item.key];
+          if (val === undefined || val === '***') return;
+          html += renderConfigItem(item.key, item.label, item.desc, val);
+        });
+
+        // 嵌套配置
+        nestedItems.forEach(item => {
+          const parts = item.key.split('.');
+          let val = config;
+          for (const p of parts) {
+            val = val?.[p];
+          }
+          if (val === undefined || val === '***') return;
+          html += renderConfigItem(item.key, item.label, item.desc, val);
+        });
+
+        html += '</div>';
+        container.innerHTML = html;
+
+      } catch (e) {
+        container.innerHTML = `<div class="text-sm text-red-500 text-center py-4">${e.message}</div>`;
+      }
+    }
+
+    function renderConfigItem(key, label, desc, value) {
+      const displayVal = typeof value === 'boolean' ? (value ? '是' : '否') : String(value);
+      return `
+        <div class="flex items-center gap-3 p-3 bg-slate-50 rounded-lg">
+          <div class="flex-1 min-w-0">
+            <div class="text-sm font-medium text-slate-700">${label}</div>
+            <div class="text-xs text-slate-400">${desc}</div>
+          </div>
+          <div class="flex items-center gap-2 shrink-0">
+            <span class="text-sm font-mono text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded">${displayVal}</span>
+            <button onclick="updateConfig('${key}', this)" class="text-xs text-slate-400 hover:text-indigo-500 transition-colors">修改</button>
+          </div>
+        </div>
+      `;
+    }
+
+    async function updateConfig(key, btnEl) {
+      const currentVal = btnEl.closest('.flex').querySelector('.font-mono').textContent;
+      const newVal = prompt(`修改 ${key} 的值：`, currentVal);
+      if (newVal === null || newVal === currentVal) return;
+
+      const msgDiv = document.getElementById('config-msg');
+      try {
+        const res = await fetch('/api/admin/config', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ key: key.split('.').pop(), value: newVal }),
+        });
+        const data = await res.json();
+        msgDiv.classList.remove('hidden');
+        if (data.ok) {
+          msgDiv.innerHTML = `<span class="text-green-600">${data.message}</span>`;
+          await loadConfig();
+        } else {
+          msgDiv.innerHTML = `<span class="text-red-500">${data.error}</span>`;
+        }
+      } catch (e) {
+        msgDiv.classList.remove('hidden');
+        msgDiv.innerHTML = `<span class="text-red-500">${e.message}</span>`;
+      }
+    }
+
+    // ============================================================
+    // Admin: 公众号管理
+    // ============================================================
+    async function loadFeedsDetail() {
+      const container = document.getElementById('feeds-list');
+      container.innerHTML = '<div class="text-sm text-slate-400 text-center py-4">加载中...</div>';
+
+      try {
+        const res = await fetch('/api/admin/feeds');
+        const data = await res.json();
+        if (!data.ok) throw new Error(data.error);
+
+        if (data.feeds.length === 0) {
+          container.innerHTML = '<div class="text-sm text-slate-400 text-center py-4">暂无订阅公众号</div>';
+          return;
+        }
+
+        let html = '<div class="space-y-2">';
+        data.feeds.forEach(f => {
+          const statusBadge = f.status === 1
+            ? '<span class="text-xs text-green-600 bg-green-50 px-1.5 py-0.5 rounded">正常</span>'
+            : '<span class="text-xs text-red-600 bg-red-50 px-1.5 py-0.5 rounded">异常</span>';
+          const syncTime = f.sync_time
+            ? new Date(f.sync_time * 1000).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+            : '从未同步';
+
+          html += `
+            <div class="flex items-center gap-3 p-3 border border-slate-200 rounded-lg">
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-2">
+                  <span class="font-medium text-sm text-slate-800 truncate">${f.mp_name}</span>
+                  ${statusBadge}
+                </div>
+                <div class="flex items-center gap-3 mt-1 text-xs text-slate-400">
+                  <span>${f.article_count} 篇文章</span>
+                  <span>最后同步: ${syncTime}</span>
+                </div>
+              </div>
+              <button onclick="deleteFeed('${f.id}', '${f.mp_name}')"
+                class="text-xs text-red-400 hover:text-red-600 transition-colors px-2 py-1 rounded hover:bg-red-50 shrink-0">
+                删除
+              </button>
+            </div>
+          `;
+        });
+        html += '</div>';
+        container.innerHTML = html;
+
+      } catch (e) {
+        container.innerHTML = `<div class="text-sm text-red-500 text-center py-4">${e.message}</div>`;
+      }
+    }
+
+    async function deleteFeed(feedId, feedName) {
+      if (!confirm(`确定删除公众号「${feedName}」？\n同时会删除其所有文章，此操作不可恢复。`)) return;
+
+      const msgDiv = document.getElementById('feeds-msg');
+      try {
+        const res = await fetch('/api/admin/feeds/delete', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ feed_id: feedId }),
+        });
+        const data = await res.json();
+        msgDiv.classList.remove('hidden');
+        if (data.ok) {
+          msgDiv.innerHTML = `<span class="text-green-600">${data.message}</span>`;
+          await loadFeedsDetail();
+          await loadFeeds(); // 同步更新下拉框
+        } else {
+          msgDiv.innerHTML = `<span class="text-red-500">${data.error}</span>`;
+        }
+      } catch (e) {
+        msgDiv.classList.remove('hidden');
+        msgDiv.innerHTML = `<span class="text-red-500">${e.message}</span>`;
+      }
+    }
+
+    // ============================================================
+    // Admin: 授权状态
+    // ============================================================
+    async function loadAuthStatus() {
+      const container = document.getElementById('auth-status-content');
+      container.innerHTML = '<div class="text-sm text-slate-400 text-center py-4">加载中...</div>';
+
+      try {
+        const res = await fetch('/api/admin/auth-status');
+        const data = await res.json();
+        if (!data.ok) throw new Error(data.error);
+
+        const expireHours = Math.round(data.token_expire_minutes / 60);
+        let html = '';
+
+        // 总体授权状态
+        if (data.auth_expired) {
+          html += `
+            <div class="flex items-center gap-3 p-3 bg-red-50 border border-red-200 rounded-lg">
+              <svg class="w-5 h-5 text-red-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z"/>
+              </svg>
+              <div class="flex-1">
+                <div class="text-sm font-medium text-red-800">授权可能已过期</div>
+                <div class="text-xs text-red-600">最近同步时间超过 ${expireHours} 小时，请重新扫码授权</div>
+              </div>
+              <a href="${data.manage_url}" target="_blank"
+                class="text-xs text-red-600 hover:text-red-800 font-medium shrink-0">去授权 →</a>
+            </div>
+          `;
+        } else {
+          html += `
+            <div class="flex items-center gap-3 p-3 bg-green-50 border border-green-200 rounded-lg">
+              <svg class="w-5 h-5 text-green-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+              </svg>
+              <div class="flex-1">
+                <div class="text-sm font-medium text-green-800">授权正常</div>
+                <div class="text-xs text-green-600">有效期 ${expireHours} 小时（${Math.round(expireHours / 24)} 天）</div>
+              </div>
+            </div>
+          `;
+        }
+
+        // 最近同步时间
+        if (data.latest_sync_time) {
+          const syncDate = new Date(data.latest_sync_time * 1000);
+          const hoursAgo = Math.round((Date.now() / 1000 - data.latest_sync_time) / 3600);
+          html += `
+            <div class="text-xs text-slate-500 mt-2">
+              最近一次同步: ${syncDate.toLocaleString('zh-CN')} （${hoursAgo} 小时前）
+            </div>
+          `;
+        }
+
+        container.innerHTML = html;
+
+      } catch (e) {
+        container.innerHTML = `<div class="text-sm text-red-500 text-center py-4">${e.message}</div>`;
+      }
+    }
+
+    // ============================================================
+    // Reset
+    // ============================================================
+    function resetAll() {
+      if (!confirm('确定重置当前会话？')) return;
+      location.reload();
+    }
+  </script>
+
+</body>
+</html>

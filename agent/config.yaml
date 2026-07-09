@@ -35,7 +35,7 @@ search:
 # --- 发布 ---
 publish:
   auto: false                     # true=自动发布草稿 / false=仅生成HTML
-  skill_dir: C:\Users\lin\.codex\skills\baoyu-post-to-wechat
+  skill_dir: ./scripts
   # 封面图配置
   cover:
     width: 900

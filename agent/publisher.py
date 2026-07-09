@@ -3,6 +3,7 @@
 
 import os
 import re
+import sys
 import subprocess
 import requests
 from datetime import datetime
@@ -13,7 +14,9 @@ from PIL import Image, ImageDraw, ImageFont
 class Publisher:
     def __init__(self, config: dict):
         self.config = config
-        self.skill_dir = config["publish"]["skill_dir"]
+        self.skill_dir = os.path.abspath(
+            os.path.join(os.path.dirname(__file__), config["publish"]["skill_dir"])
+        )
         self.auto = config["publish"]["auto"]
         self.output_dir = os.path.abspath(
             os.path.join(os.path.dirname(__file__), config["paths"]["output_dir"])
@@ -66,7 +69,12 @@ class Publisher:
         m = re.search(r"<p[^>]*>(.*?)</p>", html, re.IGNORECASE | re.DOTALL)
         if m:
             text = re.sub(r"<[^>]+>", "", m.group(1)).strip()
-            return text[:120]
+            # 微信 digest 限制按字节算，截断到安全长度
+            if len(text.encode("utf-8")) > 50:
+                while len(text.encode("utf-8")) > 47:
+                    text = text[:-1]
+                text = text + "..."
+            return text
         return ""
 
     def _generate_cover(self, title: str, output_path: str):
@@ -146,21 +154,35 @@ class Publisher:
             print(f'    npx bun "{self.skill_dir}\\scripts\\wechat-api.ts" "{html_path}" --title "{title}" --summary "{summary}" --cover "{cover_path}"')
             return {"status": "draft", "html_path": html_path, "cover_path": cover_path}
 
-        script = os.path.join(self.skill_dir, "scripts", "wechat-api.ts")
-        cmd = [
-            "npx", "-y", "bun", script,
-            html_path, "--title", title,
-            "--summary", summary, "--cover", cover_path,
-        ]
-
-        print(f"  [publisher] publishing: {title[:40]}...")
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=60, cwd=os.path.dirname(html_path))
-
-        if result.returncode == 0:
-            print(f"  [publisher] published OK")
-            return {"status": "published", "html_path": html_path, "output": result.stdout}
-        else:
-            print(f"  [publisher] publish FAILED: {result.stderr}")
-            return {"status": "failed", "error": result.stderr}
+        # 直接 import 调用，避免 subprocess 命令行编码问题
+        scripts_dir = os.path.join(os.path.dirname(__file__), "scripts")
+        sys.path.insert(0, scripts_dir)
+        try:
+            import wechat_api
+            # 微信草稿 API 标题限制约 30 字节（~10 个汉字），需要截断
+            safe_title = title
+            if len(safe_title.encode("utf-8")) > 28:
+                while len(safe_title.encode("utf-8")) > 25:
+                    safe_title = safe_title[:-1]
+                safe_title = safe_title + "..."
+            print(f"  [publisher] publishing: {safe_title}")
+            env = wechat_api.load_env()
+            aid = env.get("WECHAT_APP_ID", "")
+            sec = env.get("WECHAT_APP_SECRET", "")
+            if not aid or not sec:
+                return {"status": "failed", "error": "未找到微信凭证 (agent/.env)"}
+            tok = wechat_api.get_access_token(aid, sec)
+            thumb = wechat_api.upload_thumb(tok, cover_path)
+            with open(html_path, "r", encoding="utf-8") as f:
+                html_content = f.read()
+            html_content = wechat_api.fix_images(tok, html_content, os.path.dirname(html_path))
+            res = wechat_api.add_draft(tok, safe_title, html_content, thumb, summary)
+            print(f"  [publisher] published OK: {res['media_id'][:30]}...")
+            return {"status": "published", "html_path": html_path, "media_id": res["media_id"]}
+        except Exception as e:
+            print(f"  [publisher] publish FAILED: {e}")
+            return {"status": "failed", "error": str(e)}
+        finally:
+            sys.path.pop(0)
 
 

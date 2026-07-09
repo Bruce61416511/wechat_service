@@ -46,7 +46,7 @@ flowchart LR
 | Python 版本 | 3.14.4 |
 | 数据库 | SQLite (data/db.db) |
 | 管理界面 | http://localhost:8001 |
-| 登录账号 | lin / dmin@123 |
+| 登录账号 | lin / admin@123 |
 | 启动命令 | python main.py -job True -init False |
 
 ### 2.2 已订阅公众号（10个）
